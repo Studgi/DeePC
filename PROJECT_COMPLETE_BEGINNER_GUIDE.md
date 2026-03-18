@@ -1,10 +1,22 @@
-# Complete Beginner Guide: Entire DeePC Project (All Files)
+# Complete Beginner Guide: Entire Project Explained (All Files)
 
-## 1) Scope
+## 1) Goal of This Document
 
-This guide documents the full repository, file by file, with code excerpts and beginner-level explanations.
+This guide explains all files and folders in the repository in beginner-friendly language.
 
-Repository root covered in this guide:
+The focus is explanation first:
+
+- what each file does,
+- why it exists,
+- how data moves through it,
+- what non-basic logic means,
+- how all modules connect end to end.
+
+Imports are intentionally omitted from explanations and code snippets.
+
+## 2) Repository Map and Meaning
+
+Covered items:
 
 - [__init__.py](__init__.py)
 - [main.py](main.py)
@@ -24,608 +36,616 @@ Repository root covered in this guide:
 - [.venv/](.venv)
 - [.git/](.git)
 
-## 2) What the Project Does
+## 3) High-Level Project Workflow
 
-The project compares two predictive control approaches on a nonlinear system:
+The project compares two predictive controllers on the same nonlinear system.
 
-- MPC: model-based predictive control using local linearization and quadratic programming.
-- DeePC: data-enabled predictive control using trajectory data and behavioral constraints.
+Execution pipeline:
 
-Main runtime behavior:
+1. Build plant model from [system.py](system.py).
+2. Generate many trajectories in [data.py](data.py).
+3. Build one MPC controller and one DeePC controller.
+4. Simulate both controllers in [simulation.py](simulation.py).
+5. Compute RMSE for each method.
+6. Produce plots in [plotting.py](plotting.py) and save to [graphs/](graphs).
 
-1. Create nonlinear plant.
-2. Generate random dataset trajectories.
-3. Build controllers.
-4. Run closed-loop simulation.
-5. Compute RMSE.
-6. Save figures in [graphs/](graphs).
+This structure is modular: each file owns one stage of the pipeline.
 
-## 3) Root Package File
+## 4) Root Package File
 
 ### [__init__.py](__init__.py)
 
-Current content: empty file.
+Current state: empty.
 
-Purpose:
+Why it exists:
 
-- Marks the project root as a Python package when needed.
+- It marks the repository root as a Python package context when needed.
+- It can later hold package-level exports or metadata.
 
-## 4) Main Entry Point
+No runtime logic is currently implemented here.
+
+## 5) Main Orchestration
 
 ### [main.py](main.py)
 
-This file orchestrates the full experiment.
+This is the execution entry point.
 
-Core imports:
+Main responsibilities:
 
-```python
-from controllers.deepc import DeePCConfig, DeePCController
-from controllers.mpc import MPCConfig, MPCController
-from data import generate_dataset, make_reference, summarize_dataset_ranges
-from plotting import plot_results
-from simulation import run_all_simulations_with_diagnostics
-from system import NonlinearSystem
-```
+- define experiment parameters,
+- build model and dataset,
+- create controllers,
+- run closed-loop simulation,
+- print metrics,
+- save figures.
 
-Configuration object:
+### 5.1 Configuration object
 
-```python
-@dataclass
-class SimulationConfig:
-	n_data: int = 120
-	t_data: int = 100
-	data_seed: int = 7
-	t_ini: int = 12
-	t_f: int = 12
-	t_sim: int = 120
-	x0: float = 0.2
-	u_min: float = -2.0
-	u_max: float = 2.0
-	u_weight: float = 0.1
-```
+The SimulationConfig dataclass stores all high-impact knobs:
 
-Controller creation block:
+- data volume: n_data, t_data,
+- controller memory and horizon: t_ini, t_f,
+- closed-loop length: t_sim,
+- initial condition: x0,
+- actuator limits: u_min, u_max,
+- MPC effort penalty: u_weight.
 
-```python
-mpc = MPCController(
-	system=system,
-	config=MPCConfig(
-		t_f=cfg.t_f,
-		u_min=cfg.u_min,
-		u_max=cfg.u_max,
-		u_weight=cfg.u_weight,
-	),
-)
+Why this matters:
 
-deepc = DeePCController(
-	trajectories=dataset,
-	config=DeePCConfig(
-		t_ini=cfg.t_ini,
-		t_f=cfg.t_f,
-		u_min=cfg.u_min,
-		u_max=cfg.u_max,
-		lambda_u=1e-4,
-		lambda_g=1e-4,
-		lambda_ini_u=1e2,
-		lambda_ini_y=1e2,
-		use_soft_ini=True,
-		convex_g=True,
-		max_columns=600,
-		debug=False,
-	),
-)
-```
+- Centralized parameters make experiments reproducible.
+- Changing one field modifies behavior across the pipeline.
 
-Simulation and plotting block:
+### 5.2 Runtime sequence in plain language
 
-```python
-r = make_reference(cfg.t_sim)
-results, deepc_diagnostics = run_all_simulations_with_diagnostics(...)
+Inside main:
 
-print("RMSE summary")
-for name, res in results.items():
-	print(f"- {name:10s}: {res.rmse:.6f}")
+1. A NonlinearSystem object is created with input bounds.
+2. Random dataset trajectories are generated.
+3. Dataset min and max ranges are printed.
+4. MPC and DeePC controllers are configured.
+5. A sinusoidal reference is created.
+6. Both controllers are simulated.
+7. RMSE values are printed.
+8. Plot files are generated in [graphs/](graphs).
 
-graphs_dir = plot_results(...)
-print(f"Saved plots to: {graphs_dir.resolve()}")
-```
+This file is the only script needed for normal execution.
 
-## 5) Nonlinear Plant Model
+## 6) Plant Model
 
 ### [system.py](system.py)
 
-Plant code:
+This file defines the physical or process model used in simulation.
 
-```python
-class NonlinearSystem:
-	def __init__(self, u_min: float = -1.0, u_max: float = 1.0) -> None:
-		self.u_min = u_min
-		self.u_max = u_max
-
-	def step(self, x: float, u: float) -> float:
-		u_clipped = float(np.clip(u, self.u_min, self.u_max))
-		return float(x + 0.5 * np.sin(x) + u_clipped)
-
-	def output(self, x: float) -> float:
-		return float(x)
-```
-
-Model equations:
+State update equation:
 
 $$x_{t+1} = x_t + 0.5\sin(x_t) + u_t$$
+
+Output equation:
+
 $$y_t = x_t$$
 
-Notes:
+### 6.1 Important method behavior
 
-- Input clipping is enforced in `step`.
-- Measured output is the full state.
+- step(x, u):
+  - clips u to configured bounds,
+  - applies nonlinear update,
+  - returns next state.
 
-## 6) Data and Hankel Utilities
+- output(x):
+  - returns the measured output,
+  - here it is the state itself.
+
+Why clipping is important:
+
+- It enforces actuator limits consistently,
+- both data generation and simulation obey the same physical constraints.
+
+## 7) Data Generation and Hankel Utilities
 
 ### [data.py](data.py)
 
-Data containers:
+This file is foundational for DeePC because DeePC learns behavior from trajectory data.
 
-```python
-@dataclass
-class Trajectory:
-	x: np.ndarray
-	y: np.ndarray
-	u: np.ndarray
-```
+### 7.1 Trajectory container
 
-Rollout function:
+Trajectory stores one rollout with aligned arrays:
 
-```python
-def rollout(system: NonlinearSystem, x0: float, u_seq: np.ndarray) -> Trajectory:
-	t_data = int(u_seq.shape[0])
-	x = np.zeros(t_data + 1, dtype=float)
-	y = np.zeros(t_data + 1, dtype=float)
+- x with length T+1,
+- y with length T+1,
+- u with length T.
 
-	x[0] = x0
-	y[0] = system.output(x0)
+The extra state/output sample exists because each control action moves the state forward one step.
 
-	for t in range(t_data):
-		x[t + 1] = system.step(x[t], float(u_seq[t]))
-		y[t + 1] = system.output(x[t + 1])
+### 7.2 Rollout logic
 
-	return Trajectory(x=x, y=y, u=u_seq.astype(float))
-```
+rollout(system, x0, u_seq):
 
-Random dataset generation:
+- starts from x0,
+- applies each control in u_seq,
+- stores state and output at each time,
+- returns one complete Trajectory.
 
-```python
-def generate_dataset(...):
-	rng = np.random.default_rng(seed)
-	trajectories: List[Trajectory] = []
-	for _ in range(n_data):
-		u_seq = rng.uniform(u_min, u_max, size=t_data)
-		x0 = float(rng.uniform(x0_min, x0_max))
-		trajectories.append(rollout(system=system, x0=x0, u_seq=u_seq))
-	return trajectories
-```
+Why this function is reused:
 
-Hankel tools used by DeePC:
+- It guarantees consistent simulation logic for every generated trajectory.
 
-```python
-def build_hankel(signal: np.ndarray, window: int) -> np.ndarray:
-	n = signal.shape[0]
-	if window > n:
-		raise ValueError(...)
-	cols = n - window + 1
-	return np.vstack([signal[i : i + cols] for i in range(window)])
+### 7.3 Random dataset creation
 
+generate_dataset(...):
 
-def build_hankel_from_trajectories(trajectories, signal_name, window):
-	blocks = []
-	for tr in trajectories:
-		sig = getattr(tr, signal_name)
-		if signal_name == "y":
-			sig = sig[1:]
-		if sig.shape[0] >= window:
-			blocks.append(build_hankel(sig, window))
-	if not blocks:
-		raise ValueError(...)
-	return np.concatenate(blocks, axis=1)
-```
+- samples random control sequences in [u_min, u_max],
+- samples random initial states in [x0_min, x0_max],
+- calls rollout repeatedly,
+- returns a list of trajectories.
 
-Notes:
+Why multiple trajectories are needed:
 
-- Output alignment uses `y[1:]` so outputs pair with corresponding inputs in DeePC indexing.
-- `make_reference` generates a sinusoidal target: $r_t = \sin(0.1t)$.
+- DeePC needs broad behavioral coverage, not one single path.
 
-## 7) Controller Package Exports
+### 7.4 Range summary
+
+summarize_dataset_ranges(...) computes global min and max of:
+
+- all control values,
+- all aligned outputs.
+
+The output uses y[1:] so outputs align with input timing in DeePC matrix construction.
+
+### 7.5 Hankel matrix construction
+
+Two helper functions build the data blocks used by DeePC.
+
+Concept:
+
+- A Hankel matrix stacks shifted windows of a time-series.
+- Each column is one local trajectory fragment.
+
+build_hankel(signal, window):
+
+- verifies window length,
+- constructs all sliding windows,
+- stacks them into a matrix.
+
+build_hankel_from_trajectories(...):
+
+- loops over trajectories,
+- extracts either input or output signal,
+- aligns output by dropping first sample,
+- builds one Hankel per trajectory,
+- concatenates across trajectories.
+
+Why this is core to DeePC:
+
+- DeePC prediction is expressed as linear combinations of these data columns.
+
+### 7.6 Reference generator
+
+make_reference(t_sim) returns:
+
+$$r_t = \sin(0.1t)$$
+
+This is the target signal tracked by both controllers.
+
+## 8) Controller Package Export File
 
 ### [controllers/__init__.py](controllers/__init__.py)
 
-```python
-from controllers.deepc import DeePCController
-from controllers.mpc import MPCController
-
-__all__ = ["MPCController", "DeePCController"]
-```
-
 Purpose:
 
-- Provides top-level controller imports.
+- Re-exports controller classes for cleaner package imports.
+- Defines the public names exposed by the controllers package.
 
-## 8) MPC Controller File
+No control logic is implemented here.
+
+## 9) MPC Controller Explained
 
 ### [controllers/mpc.py](controllers/mpc.py)
 
-Config dataclass:
+This file implements model-based predictive control.
 
-```python
-@dataclass
-class MPCConfig:
-	t_f: int
-	u_min: float
-	u_max: float
-	u_weight: float = 0.1
-```
+### 9.1 Config object
 
-Nominal rollout:
+MPCConfig stores:
 
-```python
-def _nominal_rollout(self, x0: float) -> np.ndarray:
-	x_bar = np.zeros(self.config.t_f + 1, dtype=float)
-	x_bar[0] = x0
-	for k in range(self.config.t_f):
-		x_bar[k + 1] = self.system.step(x_bar[k], self._last_u_plan[k])
-	return x_bar
-```
+- horizon length t_f,
+- actuator bounds,
+- control penalty weight u_weight.
 
-Local linearization and optimization:
+### 9.2 Core idea
 
-```python
-for k in range(t_f):
-	a[k] = 1.0 + 0.5 * np.cos(x_bar[k])
-	f_bar = x_bar[k] + 0.5 * np.sin(x_bar[k])
-	c[k] = f_bar - a[k] * x_bar[k]
+MPC algorithm in this file:
 
-x = cp.Variable(t_f + 1)
-u = cp.Variable(t_f)
-...
-problem = cp.Problem(cp.Minimize(cost), constraints)
-problem.solve(solver=cp.OSQP, warm_start=True, verbose=False)
-```
+1. Build a nominal state rollout using the previous control plan.
+2. Linearize nonlinear dynamics around that nominal trajectory.
+3. Solve a quadratic optimization problem over horizon t_f.
+4. Apply first control move only (receding horizon).
 
-Control output logic:
+### 9.3 Why nominal rollout exists
 
-- Uses first element of optimized input plan.
-- Shifts stored plan for warm-start-like behavior on next step.
+The system is nonlinear, but the QP solver needs a linear model.
 
-## 9) DeePC Controller File
+Nominal rollout provides expansion points x_bar[k] so local linear parameters can be computed.
+
+### 9.4 Linearization details
+
+At each horizon step k, the model is approximated by:
+
+$$x_{k+1} \approx a_k x_k + u_k + c_k$$
+
+with
+
+$$a_k = 1 + 0.5\cos(\bar{x}_k)$$
+
+and an offset c_k that keeps the approximation consistent at the nominal point.
+
+Meaning:
+
+- a_k is local slope of nonlinear dynamics,
+- c_k corrects bias from linearization.
+
+### 9.5 Optimization objective and constraints
+
+The QP minimizes tracking error plus input effort:
+
+$$\sum_k (x_{k+1}-r_k)^2 + w_u u_k^2$$
+
+subject to:
+
+- dynamic constraints from local linear model,
+- input lower and upper bounds,
+- initial state equality.
+
+### 9.6 Returned control and warm behavior
+
+After solving:
+
+- first action u_plan[0] is applied,
+- remaining plan is shifted and reused as previous guess next step.
+
+This gives temporal smoothness and speed improvements in repeated solves.
+
+## 10) DeePC Controller Explained
 
 ### [controllers/deepc.py](controllers/deepc.py)
 
-Config dataclass:
-
-```python
-@dataclass
-class DeePCConfig:
-	t_ini: int
-	t_f: int
-	u_min: float
-	u_max: float
-	lambda_u: float = 1e-4
-	lambda_g: float = 1e-4
-	lambda_ini_u: float = 1e2
-	lambda_ini_y: float = 1e2
-	use_soft_ini: bool = True
-	convex_g: bool = True
-	max_columns: int = 600
-	debug: bool = True
-```
-
-Diagnostic step container:
-
-```python
-@dataclass
-class DeePCStepInfo:
-	status: str
-	objective: float
-	u_applied: float
-	u_plan: np.ndarray
-	y_plan: np.ndarray
-	r_plan: np.ndarray
-	g: np.ndarray
-	u_ini_residual_norm: float
-	y_ini_residual_norm: float
-	g_l2_norm: float
-	g_l1_norm: float
-	had_solution: bool
-```
-
-Hankel split:
-
-```python
-up = hu[:t_ini, :]
-uf = hu[t_ini:, :]
-yp = hy[:t_ini, :]
-yf = hy[t_ini:, :]
-```
-
-Core optimization setup:
-
-```python
-g = cp.Variable(n_col)
-u_f = cp.Variable(t_f)
-y_f = cp.Variable(t_f)
-s_u = cp.Variable(t_ini)
-s_y = cp.Variable(t_ini)
-
-constraints = [
-	u_f == uf @ g,
-	y_f == yf @ g,
-	u_f >= self.config.u_min,
-	u_f <= self.config.u_max,
-]
-if self.config.convex_g:
-	constraints += [g >= 0.0, cp.sum(g) == 1.0]
-```
-
-Soft initial matching:
-
-```python
-constraints += [
-	up @ g + s_u == u_ini,
-	yp @ g + s_y == y_ini,
-]
-```
-
-Cost:
-
-```python
-cost += cp.sum_squares(y_f - r)
-cost += self.config.lambda_u * cp.sum_squares(u_f)
-cost += self.config.lambda_g * cp.sum_squares(g)
-cost += self.config.lambda_ini_u * cp.sum_squares(s_u)
-cost += self.config.lambda_ini_y * cp.sum_squares(s_y)
-```
-
-Solver block:
-
-```python
-problem.solve(solver=cp.OSQP, warm_start=True, verbose=False, max_iter=10000)
-```
-
-Fallback path:
-
-```python
-problem.solve(solver=cp.SCS, warm_start=True, verbose=False, max_iters=2000)
-```
-
-Output selection:
-
-- Applies first control from `uf @ g` and clips to bounds.
-- Stores detailed norms and status for diagnostics.
+This file implements data-enabled predictive control using trajectory data directly.
 
-## 10) Optional Selective DeePC Variant
+### 10.1 Config object
 
-### [controllers/select_dpc.py](controllers/select_dpc.py)
+DeePCConfig includes:
 
-This file defines a DeePC variant that chooses a subset of trajectories nearest to the current state.
+- memory window t_ini,
+- prediction horizon t_f,
+- input limits,
+- regularization weights,
+- option for soft initial consistency,
+- option to force convex coefficients,
+- max Hankel columns,
+- debug logging toggle.
 
-Config extension:
+### 10.2 Diagnostic object
 
-```python
-@dataclass
-class SelectDPCConfig(DeePCConfig):
-	n_closest: int = 10
-```
+DeePCStepInfo stores per-step internals such as:
 
-Trajectory selection logic:
+- solver status,
+- objective value,
+- applied input,
+- planned trajectories,
+- coefficient vector g,
+- residual norms,
+- solution existence flag.
 
-```python
-def _select_trajectories(self, x_now: float) -> List[Trajectory]:
-	distances = []
-	for tr in self.trajectories:
-		dist = float(np.min(np.abs(tr.x - x_now)))
-		distances.append(dist)
+This object powers post-run diagnostics and plots.
 
-	idx = np.argsort(np.asarray(distances))
-	n_pick = int(max(1, min(self.select_config.n_closest, len(self.trajectories))))
-	selected = [self.trajectories[i] for i in idx[:n_pick]]
-	return selected
-```
+### 10.3 Hankel preparation
 
-Purpose:
+During initialization, Hankel matrices are built and split into:
 
-- Reduce data library online and bias predictions toward locally relevant behavior.
+- Up, Uf for past/future inputs,
+- Yp, Yf for past/future outputs.
 
-## 11) Simulation Engine and Diagnostics
+Why split is needed:
 
-### [simulation.py](simulation.py)
+- past blocks enforce consistency with recent history,
+- future blocks generate planned control/output trajectories.
 
-Result containers:
+### 10.4 Online DeePC optimization variables
 
-```python
-@dataclass
-class SimulationResult:
-	x: np.ndarray
-	y: np.ndarray
-	u: np.ndarray
-	rmse: float
-```
+Each control step optimizes:
 
-```python
-@dataclass
-class DeePCDiagnostics:
-	t: np.ndarray
-	status: list[str]
-	objective: np.ndarray
-	had_solution: np.ndarray
-	...
-```
+- g: mixing weights over data columns,
+- u_f: future inputs,
+- y_f: future outputs,
+- s_u, s_y: slack variables for soft history matching.
 
-MPC simulation loop:
+### 10.5 DeePC constraints
 
-```python
-for t in range(t_sim):
-	y[t] = system.output(x[t])
-	r_future = r[t : t + controller.config.t_f]
-	u[t] = controller.compute_control(x_now=x[t], r_future=r_future)
-	x[t + 1] = system.step(x[t], u[t])
-```
-
-DeePC simulation loop highlights:
-
-```python
-y_for_input_times = y_hist[1:] if y_hist.shape[0] > 1 else np.array([], dtype=float)
-r_future = np.sin(0.1 * (t + np.arange(controller.config.t_f, dtype=float)))
-u_t, step_info = controller.compute_control_with_info(...)
-diag_steps.append(step_info)
-```
-
-Important note:
-
-- `r_future` inside DeePC simulation is regenerated sinusoidally in code, matching the same sinusoid pattern used by `make_reference`.
-
-## 12) Plot Generation
-
-### [plotting.py](plotting.py)
-
-Main public function:
-
-```python
-def plot_results(
-	results: Dict[str, SimulationResult],
-	r: np.ndarray,
-	output_dir: str = "graphs",
-	deepc_diagnostics: DeePCDiagnostics | None = None,
-	dataset: list[Trajectory] | None = None,
-	top_g_to_plot: int = 12,
-) -> Path:
-```
-
-Always generated figures:
-
-- outputs_vs_reference.png
-- control_inputs.png
-- tracking_error.png
-
-Extra DeePC diagnostic figures when diagnostics exist:
-
-- deepc_internal_metrics.png
-- deepc_g_heatmap.png
-- deepc_prediction_alignment.png
-- deepc_prediction_mismatch.png
-- deepc_vs_dataset_trajectories.png
-
-The helper `_plot_deepc_diagnostics` produces residual, norm, coefficient, and prediction-alignment visualizations.
-
-## 13) Dependency List
-
-### [requirements.txt](requirements.txt)
-
-```text
-numpy>=1.24
-cvxpy>=1.4
-matplotlib>=3.7
-```
-
-Dependency roles:
-
-- NumPy: arrays and numeric operations.
-- CVXPY: optimization modeling layer and solver calls.
-- Matplotlib: result visualization.
-
-## 14) README Overview
-
-### [README.md](README.md)
-
-The README provides:
-
-- project purpose,
-- system equations,
-- install command,
-- run command,
-- generated plot names,
-- key tunable parameters.
-
-Basic commands documented there:
-
-```bash
-pip install -r requirements.txt
-python main.py
-```
-
-## 15) Runtime Output Directory
-
-### [graphs/](graphs)
-
-Purpose:
-
-- Stores PNG plots produced by [plotting.py](plotting.py).
-
-The folder is generated/updated by running [main.py](main.py).
-
-## 16) Cache and Environment Directories
-
-### [__pycache__/](__pycache__)
-### [controllers/__pycache__/](controllers/__pycache__)
-
-Purpose:
-
-- Python bytecode caches for faster imports.
-
-### [.venv/](.venv)
-
-Purpose:
-
-- Local virtual environment containing interpreter and installed packages.
-
-### [.git/](.git)
-
-Purpose:
-
-- Git repository metadata and version history.
-
-## 17) End-to-End Execution Summary
-
-Putting all files together:
-
-1. [main.py](main.py) reads [SimulationConfig](main.py).
-2. [system.py](system.py) provides plant dynamics.
-3. [data.py](data.py) builds dataset and Hankel-ready trajectory data.
-4. [controllers/mpc.py](controllers/mpc.py) and [controllers/deepc.py](controllers/deepc.py) compute control actions.
-5. [simulation.py](simulation.py) runs closed-loop loops and collects diagnostics.
-6. [plotting.py](plotting.py) saves all plots in [graphs/](graphs).
-7. [README.md](README.md) and [requirements.txt](requirements.txt) document usage and dependencies.
-
-## 18) Mathematical Summary of Both Controllers
-
-Plant:
-
-$$x_{k+1} = x_k + 0.5\sin(x_k) + u_k, \quad y_k = x_k$$
-
-MPC local linear model at step $k$:
-
-$$x_{k+1} \approx a_k x_k + u_k + c_k$$
-$$a_k = 1 + 0.5\cos(\bar{x}_k), \quad c_k = \bar{f}_k - a_k\bar{x}_k$$
-
-MPC stage cost:
-
-$$\ell_k = (x_{k+1} - r_k)^2 + w_u u_k^2$$
-
-DeePC behavior constraints:
+Behavior constraints:
 
 $$u_f = U_f g, \quad y_f = Y_f g$$
+
+Input bounds:
+
+$$u_{min} \le u_f \le u_{max}$$
+
+Optional convexity constraints:
+
+$$g \ge 0, \quad \sum g = 1$$
+
+Soft past matching:
+
 $$U_p g + s_u = u_{ini}, \quad Y_p g + s_y = y_{ini}$$
 
-DeePC objective:
+Interpretation:
+
+- predicted trajectories must lie in the data-driven behavior space,
+- slacks absorb mismatch when exact consistency is impossible.
+
+### 10.6 DeePC objective function
+
+The cost combines:
+
+- tracking error,
+- input effort,
+- coefficient regularization,
+- penalties on slack magnitudes.
+
+Form:
 
 $$\|y_f-r\|_2^2 + \lambda_u\|u_f\|_2^2 + \lambda_g\|g\|_2^2 + \lambda_{ini,u}\|s_u\|_2^2 + \lambda_{ini,y}\|s_y\|_2^2$$
 
+Role of each term:
+
+- tracking term drives performance,
+- input penalty avoids overly aggressive actions,
+- g penalty discourages extreme coefficient values,
+- slack penalties enforce history consistency strength.
+
+### 10.7 Solver execution and fallback
+
+Primary solver call uses OSQP with warm start and iteration cap.
+
+Fallback solver SCS is attempted only if the first solve throws an exception.
+
+Important nuance:
+
+- status values like user_limit can still produce numeric candidate solutions,
+- had_solution checks whether variable values were actually returned.
+
+### 10.8 Output applied to plant
+
+If solve is successful:
+
+- compute u from Uf g,
+- apply first element after clipping,
+- cache diagnostics.
+
+If no numeric solution is available:
+
+- reuse last applied control within bounds,
+- fill diagnostic fields with safe defaults.
+
+## 11) Selective DeePC Variant
+
+### [controllers/select_dpc.py](controllers/select_dpc.py)
+
+This file introduces a local-data DeePC variation.
+
+Key idea:
+
+- do not use all trajectories each step,
+- choose only trajectories close to current state.
+
+### 11.1 Selection metric
+
+For each stored trajectory:
+
+- compute minimum absolute distance between current state and any trajectory state sample,
+- rank trajectories by this distance,
+- keep n_closest trajectories.
+
+### 11.2 Solve path
+
+- build Hankel blocks from selected trajectories,
+- if selection fails (for example insufficient window), fall back to full Hankel set,
+- solve using inherited DeePC logic.
+
+Potential benefit:
+
+- local data can improve relevance and reduce problem size.
+
+Potential risk:
+
+- too few selected trajectories can reduce excitation diversity.
+
+## 12) Simulation Engine
+
+### [simulation.py](simulation.py)
+
+This file executes both controllers against the same plant and computes metrics.
+
+### 12.1 Result classes
+
+SimulationResult stores:
+
+- state trajectory x,
+- output trajectory y,
+- control sequence u,
+- RMSE metric.
+
+DeePCDiagnostics stores rich per-step internals for analysis and plotting.
+
+### 12.2 RMSE helper
+
+_rmse(y, r) computes
+
+$$\sqrt{\text{mean}((y-r)^2)}$$
+
+This gives one scalar tracking score per controller.
+
+### 12.3 MPC simulation loop
+
+At each time step:
+
+1. measure current output,
+2. slice future reference,
+3. request control from MPC,
+4. step plant forward.
+
+### 12.4 DeePC simulation loop
+
+At each time step:
+
+1. measure current output,
+2. align output history with input history,
+3. build future reference segment,
+4. request DeePC control (with or without diagnostics),
+5. step plant,
+6. append history arrays.
+
+### 12.5 Post-processing diagnostics
+
+When diagnostics are enabled:
+
+- collect status/objective/norm trends,
+- stack all g vectors into a matrix,
+- stack predicted plans,
+- roll out predicted control plan through true nonlinear plant,
+- compute prediction-vs-rollout mismatch norms.
+
+This creates insight beyond final RMSE.
+
+### 12.6 Public simulation wrappers
+
+- run_all_simulations: returns results only.
+- run_all_simulations_with_diagnostics: returns results plus DeePCDiagnostics.
+
+## 13) Plotting and Visualization
+
+### [plotting.py](plotting.py)
+
+This file converts numeric results into figures.
+
+### 13.1 Core comparison figures
+
+Generated for both controllers:
+
+- output tracking against reference,
+- control input trajectories,
+- tracking error trajectories.
+
+### 13.2 DeePC internal figures
+
+Generated when diagnostics are provided:
+
+- applied input and objective trends,
+- residual and norm trends,
+- heatmap of strongest g coefficients,
+- predicted vs measured one-step alignment,
+- prediction mismatch norms,
+- closed-loop trajectories over dataset trajectories.
+
+### 13.3 Top-g feature
+
+Averages absolute value of each g component over time,
+then plots only top-ranked coefficients for readability.
+
+## 14) Project Documentation File
+
+### [README.md](README.md)
+
+This file provides:
+
+- project purpose,
+- system equations,
+- install/run commands,
+- output plot names,
+- key configurable parameters.
+
+It is concise and oriented for quick start.
+
+## 15) Dependency File
+
+### [requirements.txt](requirements.txt)
+
+Dependencies:
+
+- numpy,
+- cvxpy,
+- matplotlib.
+
+Why each exists:
+
+- numerical arrays and vectorized math,
+- convex optimization modeling and solving,
+- plotting and figure export.
+
+## 16) Output and Support Folders
+
+### [graphs/](graphs)
+
+Stores generated PNG result files.
+
+### [__pycache__/](__pycache__) and [controllers/__pycache__/](controllers/__pycache__)
+
+Python bytecode caches automatically produced by interpreter.
+
+### [.venv/](.venv)
+
+Local virtual environment containing project-specific packages and interpreter binaries.
+
+### [.git/](.git)
+
+Git metadata for version control (commits, branches, history).
+
+## 17) Full End-to-End Data Flow
+
+Step-by-step data movement:
+
+1. [main.py](main.py) sets parameters and builds objects.
+2. [data.py](data.py) creates trajectory library from random controls.
+3. [controllers/deepc.py](controllers/deepc.py) transforms trajectories into Hankel blocks.
+4. [simulation.py](simulation.py) repeatedly asks each controller for control action.
+5. [system.py](system.py) advances nonlinear plant state.
+6. [simulation.py](simulation.py) accumulates trajectories and metrics.
+7. [plotting.py](plotting.py) renders and saves visual summaries.
+
+This loop is the core experiment architecture.
+
+## 18) Beginner Interpretation Notes
+
+Key conceptual differences:
+
+- MPC uses explicit model equations each step.
+- DeePC uses historical data structure instead of explicit model inside optimization.
+
+Practical consequences:
+
+- MPC quality depends on model quality and linearization quality.
+- DeePC quality depends strongly on data richness, scaling, and regularization.
+
+Both methods solve optimization repeatedly in a receding-horizon pattern.
+
 ## 19) Glossary
 
-- Horizon (`t_f`): number of future steps optimized each control move.
-- Initial window (`t_ini`): number of past samples enforced in DeePC matching.
-- Hankel matrix: stacked shifted windows from time-series data.
-- RMSE: root mean square error, a tracking-performance metric.
-- Warm start: using previous solve information to help the next optimization.
+- Horizon: number of future steps optimized each control step.
+- Initial window: number of recent samples used to anchor DeePC prediction.
+- Hankel matrix: matrix made of stacked shifted windows of time-series data.
+- Receding horizon: apply first planned control, then re-optimize at next step.
+- RMSE: root mean square tracking error.
+- Warm start: reusing previous optimization information to speed repeated solves.
 
-## 20) Conclusion
+## 20) Final Summary
 
-This repository is a complete comparison framework for nonlinear tracking with model-based and data-driven predictive control. Every source file contributes a specific stage of the workflow: model, data, optimization, simulation, and visualization. The structure is compact and suitable for experimentation with horizons, penalties, dataset size, and solver settings.
+The repository is a compact but complete control comparison framework.
+
+- [system.py](system.py) defines the nonlinear plant.
+- [data.py](data.py) provides trajectory generation and Hankel utilities.
+- [controllers/mpc.py](controllers/mpc.py) implements model-based predictive control.
+- [controllers/deepc.py](controllers/deepc.py) implements data-enabled predictive control with diagnostics.
+- [controllers/select_dpc.py](controllers/select_dpc.py) provides a local trajectory selection variant.
+- [simulation.py](simulation.py) runs closed-loop experiments and computes metrics.
+- [plotting.py](plotting.py) saves comparison and diagnostic figures.
+- [main.py](main.py) orchestrates the entire run.
+
+All files and folders in the workspace now have explicit explanation in this guide.
