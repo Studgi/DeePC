@@ -1,0 +1,47 @@
+Bachelor Thesis Roadmap
+Structural Knowledge Integration in Data-Driven Predictive Control
+
+Ahmed Tarek El Hossainy
+RWTH Aachen University Last Updated: March 24, 2026
+
+Thesis Progress & Milestone Tracker
+
+
+Phase 1: Code Ownership & Structural Foundations	
+Week 2: DPC Deconstruction & Structural Lifting (Current)
+Started: March 18. Goal: Bridge the gap between AI-generated code and proprietary under-standing.
+Code Refactoring: Deconstruct the existing DPC setup. Manually rebuild the block Hankel matrix H to understand the time-shifted trajectory representation and its reliance on the fundamental lemma.
+Manual Lifting: Implement structural transformations derived from the kinematic bicy-cle model. Specifically, map the steering angle δ → tan(δ) to linearize the yaw dynamics.
+Linearization with DPC: Evaluate if the transformed data makes the system more amenable to the linear assumptions of the DeePC framework.
+Deliverable: A proprietary, line-by-line understood DPC engine with manual input lift-ing.
+
+Week 3: Residual Learning (MPC-DPC Hybrid)
+Goal: Using established MPC knowledge to master data-driven residuals.
+Residual Framework: Deduce a nominal model from the kinematic bicycle physics (as used in the MPC setup).
+Identification of Error: Measure real simulation trajectories and compute the ”Predic-tion Gap.” Configure the DPC to predict only this residual error.
+Error Correction: Use the Hankel matrix to learn the prediction error of the nominal model, rather than the full state, increasing robustness against nonlinearities.
+Deliverable: A functional ”Residual-DPC” script where the nominal model handles the base physics and DPC handles the unmodeled dynamics.
+
+Phase 2: Complex Transformations & Stability	
+Week 4: Hammerstein-Wiener Nonlinearities
+Implementation: Model the system as a linear block ”sandwiched” between static non-linearities. Apply the Hammerstein function to describe input nonlinearities before they enter the DPC solver.
+
+Week 5: Advanced Data Lifting & Kernels
+Kernel Learning: Explore lifting the data into higher-dimensional spaces using basis functions or kernels to capture dynamics that manual lifting might miss.
+
+Week 6: Stability & Regularization
+Theoretic Rigor: Study and implement ℓ1 and ℓ2 regularization on the weight vector
+g. Incorporate terminal constraints to provide theoretical stability guarantees for the transformed setup.
+
+Phase 3: Real-Time Optimization & Selection	
+Week 7: Online Data Selection (Select-DPC)
+Dynamic Data: Implement nearest-neighbor column selection (Näf 2025). Construct miniature, localized Hankel matrices on the fly to improve real-time performance.
+
+Week 8: Contextual Sampling
+Reference Awareness: Implement contextual sampling (Beerwerth 2025) to select his-torical data based on the intended future reference trajectory rather than just the current state.
+
+Week 9: Benchmarking & Stress Testing
+Evaluation: Run rigorous comparisons between the [Nominal MPC], [Vanilla DPC], and [Structure-Informed DPC] across extreme curvatures and noise profiles.
+
+Phase 4: Unknown	
+TBD: Research expansion based on Phase 3 results, thesis documentation, and project synthesis.

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 
 from controllers.deepc import DeePCController, DeePCStepInfo
 from controllers.mpc import MPCController
-from system import NonlinearSystem
 
 
 @dataclass
@@ -44,7 +43,7 @@ def _rmse(y: np.ndarray, r: np.ndarray) -> float:
 
 
 def simulate_mpc(
-    system: NonlinearSystem,
+    system: Any,
     controller: MPCController,
     x0: float,
     r: np.ndarray,
@@ -66,12 +65,13 @@ def simulate_mpc(
 
 
 def simulate_deepc(
-    system: NonlinearSystem,
+    system: Any,
     controller: DeePCController,
     x0: float,
     r: np.ndarray,
     t_sim: int,
     collect_diagnostics: bool = False,
+    lifted_input: bool = False,
 ) -> tuple[SimulationResult, DeePCDiagnostics | None]:
     x = np.zeros(t_sim + 1, dtype=float)
     y = np.zeros(t_sim, dtype=float)
@@ -179,7 +179,7 @@ def simulate_deepc(
 
 
 def run_all_simulations(
-    system: NonlinearSystem,
+    system: Any,
     mpc: MPCController,
     deepc: DeePCController,
     x0: float,
@@ -194,7 +194,7 @@ def run_all_simulations(
 
 
 def run_all_simulations_with_diagnostics(
-    system: NonlinearSystem,
+    system: Any,
     mpc: MPCController,
     deepc: DeePCController,
     x0: float,

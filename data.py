@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import Any, List
 
 import numpy as np
-
-from system import NonlinearSystem
 
 
 @dataclass
@@ -15,7 +13,7 @@ class Trajectory:
     u: np.ndarray  # Shape: (T,)
 
 
-def rollout(system: NonlinearSystem, x0: float, u_seq: np.ndarray) -> Trajectory:
+def rollout(system: Any, x0: float, u_seq: np.ndarray) -> Trajectory:
     t_data = int(u_seq.shape[0])
     x = np.zeros(t_data + 1, dtype=float)
     y = np.zeros(t_data + 1, dtype=float)
@@ -31,7 +29,7 @@ def rollout(system: NonlinearSystem, x0: float, u_seq: np.ndarray) -> Trajectory
 
 
 def generate_dataset(
-    system: NonlinearSystem,
+    system: Any,
     n_data: int,
     t_data: int,
     u_min: float,
@@ -39,6 +37,7 @@ def generate_dataset(
     x0_min: float = -2.0,
     x0_max: float = 2.0,
     seed: int = 0,
+    lift_input: bool = False,
 ) -> List[Trajectory]:
     rng = np.random.default_rng(seed)
     trajectories: List[Trajectory] = []
@@ -46,7 +45,17 @@ def generate_dataset(
     for _ in range(n_data):
         u_seq = rng.uniform(u_min, u_max, size=t_data)
         x0 = float(rng.uniform(x0_min, x0_max))
-        trajectories.append(rollout(system=system, x0=x0, u_seq=u_seq))
+        # If lifting, the system actually needs to step with the real input but save tan(u)
+        # However, for DPC, we can just say "DPC sees the lifted u" 
+        # so u_seq generated here should be considered the *unlifted* delta for reality, 
+        # but the trajectory stores the lifted input so DeePC builds Hankel using tan(delta).
+        
+        # Actually rollout uses system.step(). If we use the original bicycle model, 
+        # it expects delta. We pass delta, then lift it.
+        tr = rollout(system=system, x0=x0, u_seq=u_seq)
+        if lift_input:
+            tr.u = np.tan(tr.u)
+        trajectories.append(tr)
 
     return trajectories
 
