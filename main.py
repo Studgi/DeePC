@@ -113,7 +113,10 @@ def main() -> None:
         ),
     )
 
-    r = make_reference(cfg.t_sim)
+    # 4. Generate the path to track. Higher frequencies means tighter, more aggressive turns.
+    # Try increasing this frequency (e.g. to 0.8) to see Vanilla DPC fail and Lifted DPC succeed!
+    path_frequency = 0.5
+    r = make_reference(cfg.t_sim, frequency=path_frequency)
 
     # Run simulations
     res_mpc = simulate_mpc(system=system, controller=mpc, x0=cfg.x0, r=r, t_sim=cfg.t_sim)

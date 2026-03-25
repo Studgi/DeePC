@@ -27,15 +27,23 @@ COLORS = {
     'Lifted DPC': '#00549F' # RWTH Blue
 }
 
-def generate_performance_and_error():
+def generate_performance_and_error(results=None):
     fig, axes = plt.subplots(1, 3, figsize=(16, 4))
     
-    t = np.linspace(0, 10, 200)
-    ground_truth = np.sin(t)
-    
-    mpc_traj = ground_truth + np.random.normal(0, 0.05, 200)
-    lifted_traj = ground_truth + np.random.normal(0, 0.08, 200)
-    std_traj = ground_truth * 0.8 + np.sin(t*1.2)*0.2 + np.random.normal(0, 0.1, 200)
+    if results is not None:
+        # Use real simulation data
+        t = np.arange(len(results["MPC"].y))
+        ground_truth = np.sin(0.1 * t)
+        mpc_traj = results["MPC"].y
+        std_traj = results["Vanilla DPC"].y
+        lifted_traj = results["Structure-Informed DPC"].y
+    else:
+        # Fallback to synthetic if no results passed
+        t = np.linspace(0, 10, 200)
+        ground_truth = np.sin(t)
+        mpc_traj = ground_truth + np.random.normal(0, 0.05, 200)
+        lifted_traj = ground_truth + np.random.normal(0, 0.08, 200)
+        std_traj = ground_truth * 0.8 + np.sin(t*1.2)*0.2 + np.random.normal(0, 0.1, 200)
 
     # Plot A: Trajectory (S-Curve)
     axes[0].plot(t, ground_truth, 'k--', label='Reference', lw=2)
@@ -215,7 +223,7 @@ def generate_pareto_front():
 
 def generate_all_plots(results=None):
     print("Generating Academic Evaluation Suite Plots...")
-    generate_performance_and_error()
+    generate_performance_and_error(results)
     generate_open_loop_prediction()
     generate_computational_complexity()
     generate_roa_heatmaps()

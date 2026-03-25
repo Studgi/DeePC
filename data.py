@@ -105,6 +105,6 @@ def build_hankel_from_trajectories(
     return np.concatenate(blocks, axis=1)
 
 
-def make_reference(t_sim: int) -> np.ndarray:
+def make_reference(t_sim: int, frequency: float = 0.1) -> np.ndarray:
     t = np.arange(t_sim, dtype=float)
-    return np.sin(0.1 * t)
+    return np.sin(frequency * t)
