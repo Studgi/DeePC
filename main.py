@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -11,6 +12,25 @@ from evaluation_suite import generate_all_plots
 from simulation import (run_all_simulations_with_diagnostics, simulate_deepc,
                         simulate_mpc)
 from system import KinematicBicycleYaw, LiftedKinematicBicycleYaw
+
+
+def export_debug_logs(results: dict, r: np.ndarray, out_dir: str = "debug_logs") -> None:
+    """Exports logs of outputs for all models to CSV files for better assessment."""
+    import csv
+    os.makedirs(out_dir, exist_ok=True)
+    
+    for name, res in results.items():
+        filename = os.path.join(out_dir, f"{name.replace(' ', '_')}_debug_log.csv")
+        with open(filename, mode='w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Time_Step", "Reference", "State_x", "Output_y", "Input_u"])
+            
+            # y, u, and r are matched up to length t_sim. x has length t_sim+1.
+            for t in range(len(res.y)):
+                ref_val = r[t] if t < len(r) else r[-1]
+                writer.writerow([t, ref_val, res.x[t], res.y[t], res.u[t]])
+            
+        print(f"Exported debug logs for {name} to {filename}")
 
 
 @dataclass
@@ -31,7 +51,7 @@ class SimulationConfig:
     # Input bounds and cost weight
     u_min: float = -np.pi/4
     u_max: float = np.pi/4
-    u_weight: float = 0.1
+    u_weight: float = 1e-4
 
 
 
@@ -89,7 +109,7 @@ def main() -> None:
             lambda_ini_u=1e2,
             lambda_ini_y=1e2,
             use_soft_ini=True,
-            convex_g=True,
+            convex_g=False,
             max_columns=600,
             debug=False,
         ),
@@ -107,15 +127,15 @@ def main() -> None:
             lambda_ini_u=1e2,
             lambda_ini_y=1e2,
             use_soft_ini=True,
-            convex_g=True,
+            convex_g=False,
             max_columns=600,
             debug=False,
         ),
     )
 
     # 4. Generate the path to track. Higher frequencies means tighter, more aggressive turns.
-    # Try increasing this frequency (e.g. to 0.8) to see Vanilla DPC fail and Lifted DPC succeed!
-    path_frequency = 0.5
+    # Try increasing this frequency (e.g. to 1.5) to see Vanilla DPC fail and Lifted DPC succeed!
+    path_frequency = 0.75
     r = make_reference(cfg.t_sim, frequency=path_frequency)
 
     # Run simulations
@@ -140,7 +160,10 @@ def main() -> None:
     for name, res in results.items():
         print(f"- {name:25s}: {res.rmse:.6f}")
 
-    out_dir = generate_all_plots(results)
+    # Generate debug documents for assessment
+    export_debug_logs(results, r)
+
+    out_dir = generate_all_plots(results, r)
     print(f"Saved plots to: {out_dir}")
 
 

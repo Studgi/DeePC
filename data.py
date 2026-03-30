@@ -105,6 +105,8 @@ def build_hankel_from_trajectories(
     return np.concatenate(blocks, axis=1)
 
 
-def make_reference(t_sim: int, frequency: float = 0.1) -> np.ndarray:
-    t = np.arange(t_sim, dtype=float)
+def make_reference(t_sim: int, frequency: float = 0.5, dt: float = 0.1) -> np.ndarray:
+    t = np.arange(t_sim, dtype=float) * dt
+    # This uses actual time in seconds to make the curve physically possible for the car!
+    # A frequency > 1.0 will start to push the car to its steering limits.
     return np.sin(frequency * t)

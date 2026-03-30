@@ -27,13 +27,13 @@ COLORS = {
     'Lifted DPC': '#00549F' # RWTH Blue
 }
 
-def generate_performance_and_error(results=None):
+def generate_performance_and_error(results=None, r_true=None):
     fig, axes = plt.subplots(1, 3, figsize=(16, 4))
     
     if results is not None:
         # Use real simulation data
         t = np.arange(len(results["MPC"].y))
-        ground_truth = np.sin(0.1 * t)
+        ground_truth = r_true if r_true is not None else np.sin(0.1 * t)
         mpc_traj = results["MPC"].y
         std_traj = results["Vanilla DPC"].y
         lifted_traj = results["Structure-Informed DPC"].y
@@ -221,9 +221,9 @@ def generate_pareto_front():
     plt.savefig(f"{OUT_DIR}/6_Pareto_Front.png", dpi=300)
     plt.close()
 
-def generate_all_plots(results=None):
+def generate_all_plots(results=None, r_true=None):
     print("Generating Academic Evaluation Suite Plots...")
-    generate_performance_and_error(results)
+    generate_performance_and_error(results, r_true)
     generate_open_loop_prediction()
     generate_computational_complexity()
     generate_roa_heatmaps()

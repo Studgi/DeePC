@@ -57,7 +57,13 @@ def simulate_mpc(
 
     for t in range(t_sim):
         y[t] = system.output(x[t])
-        r_future = r[t : t + controller.config.t_f]
+        
+        # We need the reference for the future states x_{t+1} ... x_{t+t_f}
+        r_future = r[t + 1 : t + 1 + controller.config.t_f]
+        if r_future.shape[0] < controller.config.t_f:
+            pad_val = r_future[-1] if r_future.size > 0 else 0.0
+            r_future = np.pad(r_future, (0, controller.config.t_f - r_future.shape[0]), constant_values=pad_val)
+            
         u[t] = controller.compute_control(x_now=x[t], r_future=r_future)
         x[t + 1] = system.step(x[t], u[t])
 
@@ -92,7 +98,12 @@ def simulate_deepc(
         # align with u_0..u_{t-1} using y_1..y_t.
         y_for_input_times = y_hist[1:] if y_hist.shape[0] > 1 else np.array([], dtype=float)
 
-        r_future = np.sin(0.1 * (t + np.arange(controller.config.t_f, dtype=float)))
+        # We need the reference for the future states y_{t+1} ... y_{t+t_f}
+        r_future = r[t + 1 : t + 1 + controller.config.t_f]
+        if r_future.shape[0] < controller.config.t_f:
+            pad_val = r_future[-1] if r_future.size > 0 else 0.0
+            r_future = np.pad(r_future, (0, controller.config.t_f - r_future.shape[0]), constant_values=pad_val)
+
         if collect_diagnostics:
             u_t, step_info = controller.compute_control_with_info(
                 u_hist=u_hist,
