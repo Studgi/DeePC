@@ -27,8 +27,9 @@ COLORS = {
     'Lifted DPC': '#00549F' # RWTH Blue
 }
 
-def generate_performance_and_error(results=None, r_true=None):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4))
+def generate_performance_and_error(results=None, r_true=None, v_seq=None):
+    # Create 4 subplots instead of 3, the first one for reference/trajectory, second for velocity, third for error, fourth for IAE
+    fig, axes = plt.subplots(1, 4, figsize=(20, 4))
     
     if results is not None:
         # Use real simulation data
@@ -37,6 +38,7 @@ def generate_performance_and_error(results=None, r_true=None):
         mpc_traj = results["MPC"].y
         std_traj = results["Vanilla DPC"].y
         lifted_traj = results["Structure-Informed DPC"].y
+        velocity_profile = v_seq if v_seq is not None else np.ones_like(t) * 2.0
     else:
         # Fallback to synthetic if no results passed
         t = np.linspace(0, 10, 200)
@@ -44,6 +46,7 @@ def generate_performance_and_error(results=None, r_true=None):
         mpc_traj = ground_truth + np.random.normal(0, 0.05, 200)
         lifted_traj = ground_truth + np.random.normal(0, 0.08, 200)
         std_traj = ground_truth * 0.8 + np.sin(t*1.2)*0.2 + np.random.normal(0, 0.1, 200)
+        velocity_profile = 2.0 + np.sin(0.5 * t)
 
     # Plot A: Trajectory (S-Curve)
     axes[0].plot(t, ground_truth, 'k--', label='Reference', lw=2)
@@ -51,27 +54,34 @@ def generate_performance_and_error(results=None, r_true=None):
     axes[0].plot(t, lifted_traj, color=COLORS['Lifted DPC'], label='Lifted DPC')
     axes[0].plot(t, mpc_traj, color=COLORS['MPC'], label='MPC')
     axes[0].set_title('A: Trajectory Tracking')
-    axes[0].set_xlabel('X Position (m)')
+    axes[0].set_xlabel('Time Step')
     axes[0].set_ylabel('Y Position (m)')
     axes[0].legend()
 
-    # Plot B: Lateral Error (e_ct)
-    axes[1].plot(t, std_traj - ground_truth, color=COLORS['Standard DPC'])
-    axes[1].plot(t, lifted_traj - ground_truth, color=COLORS['Lifted DPC'])
-    axes[1].plot(t, mpc_traj - ground_truth, color=COLORS['MPC'])
-    axes[1].set_title(r'B: Cross-Track Error ($e_{ct}$)')
-    axes[1].set_xlabel('Time (s)')
-    axes[1].set_ylabel('Error (m)')
+    # Plot B: Velocity Profile
+    axes[1].plot(t, velocity_profile[:len(t)], 'k-', lw=2, label='Velocity')
+    axes[1].set_title('B: Velocity Sweep')
+    axes[1].set_xlabel('Time Step')
+    axes[1].set_ylabel('Velocity (m/s)')
+    axes[1].legend()
 
-    # Plot C: IAE Bar Chart
+    # Plot C: Lateral Error (e_ct)
+    axes[2].plot(t, std_traj - ground_truth, color=COLORS['Standard DPC'])
+    axes[2].plot(t, lifted_traj - ground_truth, color=COLORS['Lifted DPC'])
+    axes[2].plot(t, mpc_traj - ground_truth, color=COLORS['MPC'])
+    axes[2].set_title(r'C: Cross-Track Error ($e_{ct}$)')
+    axes[2].set_xlabel('Time Step')
+    axes[2].set_ylabel('Error (m)')
+
+    # Plot D: IAE Bar Chart
     iae = {
         'MPC': np.sum(np.abs(mpc_traj - ground_truth)),
         'Standard DPC': np.sum(np.abs(std_traj - ground_truth)),
         'Lifted DPC': np.sum(np.abs(lifted_traj - ground_truth)),
     }
-    axes[2].bar(iae.keys(), iae.values(), color=[COLORS[k] for k in iae.keys()])
-    axes[2].set_title('C: Integral of Absolute Error (IAE)')
-    axes[2].set_ylabel('IAE')
+    axes[3].bar(iae.keys(), iae.values(), color=[COLORS[k] for k in iae.keys()])
+    axes[3].set_title('D: Integral of Absolute Error (IAE)')
+    axes[3].set_ylabel('IAE')
     
     plt.tight_layout()
     plt.savefig(f"{OUT_DIR}/1_Performance_and_Error.png", dpi=300)
@@ -221,9 +231,9 @@ def generate_pareto_front():
     plt.savefig(f"{OUT_DIR}/6_Pareto_Front.png", dpi=300)
     plt.close()
 
-def generate_all_plots(results=None, r_true=None):
+def generate_all_plots(results=None, r_true=None, v_seq=None):
     print("Generating Academic Evaluation Suite Plots...")
-    generate_performance_and_error(results, r_true)
+    generate_performance_and_error(results, r_true, v_seq)
     generate_open_loop_prediction()
     generate_computational_complexity()
     generate_roa_heatmaps()

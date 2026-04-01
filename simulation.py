@@ -48,7 +48,9 @@ def simulate_mpc(
     x0: float,
     r: np.ndarray,
     t_sim: int,
+    v_seq: np.ndarray = None,
 ) -> SimulationResult:
+    """Simulate MPC with optional time-varying velocity."""
     x = np.zeros(t_sim + 1, dtype=float)
     y = np.zeros(t_sim, dtype=float)
     u = np.zeros(t_sim, dtype=float)
@@ -56,6 +58,7 @@ def simulate_mpc(
     x[0] = x0
 
     for t in range(t_sim):
+        current_v = v_seq[t] if v_seq is not None else getattr(system, "v", 2.0)
         y[t] = system.output(x[t])
         
         # We need the reference for the future states x_{t+1} ... x_{t+t_f}
@@ -64,8 +67,8 @@ def simulate_mpc(
             pad_val = r_future[-1] if r_future.size > 0 else 0.0
             r_future = np.pad(r_future, (0, controller.config.t_f - r_future.shape[0]), constant_values=pad_val)
             
-        u[t] = controller.compute_control(x_now=x[t], r_future=r_future)
-        x[t + 1] = system.step(x[t], u[t])
+        u[t] = controller.compute_control(x_now=x[t], r_future=r_future, current_v=current_v)
+        x[t + 1] = system.step(x[t], u[t], v=current_v)
 
     return SimulationResult(x=x, y=y, u=u, rmse=_rmse(y, r))
 
@@ -78,6 +81,7 @@ def simulate_deepc(
     t_sim: int,
     collect_diagnostics: bool = False,
     lifted_input: bool = False,
+    v_seq: np.ndarray = None,
 ) -> tuple[SimulationResult, DeePCDiagnostics | None]:
     x = np.zeros(t_sim + 1, dtype=float)
     y = np.zeros(t_sim, dtype=float)
@@ -91,6 +95,7 @@ def simulate_deepc(
     diag_steps: list[DeePCStepInfo] = []
 
     for t in range(t_sim):
+        current_v = v_seq[t] if v_seq is not None else getattr(system, "v", 2.0)
         y_now = system.output(x[t])
         y[t] = y_now
 
@@ -121,7 +126,7 @@ def simulate_deepc(
             )
 
         u[t] = u_t
-        x[t + 1] = system.step(x[t], u_t)
+        x[t + 1] = system.step(x[t], u_t, v=current_v)
 
         u_hist = np.append(u_hist, u_t)
         y_hist = np.append(y_hist, system.output(x[t + 1]))
@@ -155,8 +160,10 @@ def simulate_deepc(
 
         x_roll = x[i]
         y_roll = np.zeros(t_f, dtype=float)
+        # To make the visual actual plan accurate, we must simulate using the velocity sequence too!
         for k in range(t_f):
-            x_roll = system.step(x_roll, float(step.u_plan[k]))
+            v_roll = v_seq[i + k] if v_seq is not None and (i + k) < len(v_seq) else (v_seq[-1] if v_seq is not None else getattr(system, "v", 2.0))
+            x_roll = system.step(x_roll, float(step.u_plan[k]), v=v_roll)
             y_roll[k] = system.output(x_roll)
 
         y_actual_plan_matrix[i, :] = y_roll

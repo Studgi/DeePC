@@ -39,7 +39,7 @@ class MPCController:
         # This acts like a warm-start trajectory for successive linearization.
         self._last_u_plan = np.zeros(self.config.t_f, dtype=float)
 
-    def _nominal_rollout(self, x0: float) -> np.ndarray:
+    def _nominal_rollout(self, x0: float, current_v: float) -> np.ndarray:
         """Roll out a nominal state trajectory using the previous input plan.
 
         The MPC problem linearizes the nonlinear dynamics around this nominal
@@ -52,20 +52,25 @@ class MPCController:
         x_bar[0] = x0
         # Forward-simulate one step at a time using last cycle's planned inputs.
         for k in range(self.config.t_f):
-            x_bar[k + 1] = self.system.step(x_bar[k], self._last_u_plan[k])
+            x_bar[k + 1] = self.system.step(x_bar[k], self._last_u_plan[k], v=current_v)
         # Return the trajectory used as linearization reference.
         return x_bar
 
-    def compute_control(self, x_now: float, r_future: np.ndarray) -> float:
+    def compute_control(self, x_now: float, r_future: np.ndarray, current_v: float = None) -> float:
         """Compute the first MPC action for the current state.
 
         Args:
             x_now: Current measured state.
             r_future: Desired future reference trajectory.
+            current_v: The currently measured velocity (used as constant over horizon).
 
         Returns:
             The first control move from the optimized input sequence.
         """
+        
+        # If no velocity provided, fall back to the system's baseline.
+        if current_v is None:
+            current_v = getattr(self.system, "v", 2.0)
 
         # Horizon shorthand for readability.
         t_f = self.config.t_f
@@ -75,12 +80,12 @@ class MPCController:
         else:
             r = r_future[:t_f]
 
-        x_bar = self._nominal_rollout(x_now)
+        x_bar = self._nominal_rollout(x_now, current_v)
 
         dt = getattr(self.system, "dt", 0.1)
-        v = getattr(self.system, "v", 2.0)
         L = getattr(self.system, "L", 2.5)
-        alpha = dt * (v / L)
+        # We assume Velocity stays constant at current_v across the predicted LTV horizon
+        alpha = dt * (current_v / L)
 
         x = cp.Variable(t_f + 1)
         u = cp.Variable(t_f)

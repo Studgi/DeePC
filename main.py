@@ -14,7 +14,7 @@ from simulation import (run_all_simulations_with_diagnostics, simulate_deepc,
 from system import KinematicBicycleYaw, LiftedKinematicBicycleYaw
 
 
-def export_debug_logs(results: dict, r: np.ndarray, out_dir: str = "debug_logs") -> None:
+def export_debug_logs(results: dict, r: np.ndarray, v_seq: np.ndarray = None, out_dir: str = "debug_logs") -> None:
     """Exports logs of outputs for all models to CSV files for better assessment."""
     import csv
     os.makedirs(out_dir, exist_ok=True)
@@ -23,12 +23,13 @@ def export_debug_logs(results: dict, r: np.ndarray, out_dir: str = "debug_logs")
         filename = os.path.join(out_dir, f"{name.replace(' ', '_')}_debug_log.csv")
         with open(filename, mode='w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["Time_Step", "Reference", "State_x", "Output_y", "Input_u"])
+            writer.writerow(["Time_Step", "Velocity", "Reference", "State_x", "Output_y", "Input_u"])
             
             # y, u, and r are matched up to length t_sim. x has length t_sim+1.
             for t in range(len(res.y)):
                 ref_val = r[t] if t < len(r) else r[-1]
-                writer.writerow([t, ref_val, res.x[t], res.y[t], res.u[t]])
+                vel_val = v_seq[t] if v_seq is not None else 2.0
+                writer.writerow([t, vel_val, ref_val, res.x[t], res.y[t], res.u[t]])
             
         print(f"Exported debug logs for {name} to {filename}")
 
@@ -137,14 +138,21 @@ def main() -> None:
     # Try increasing this frequency (e.g. to 1.5) to see Vanilla DPC fail and Lifted DPC succeed!
     path_frequency = 0.75
     r = make_reference(cfg.t_sim, frequency=path_frequency)
+    
+    # 4.b Generate the velocity sequence to stress-test the controllers
+    # Let velocity rapidly oscillate between 0.5 m/s and 3.5 m/s 
+    # to guarantee MPC's constant horizon assumption (and DeePC's dataset assumption) completely fails!
+    # This ensures velocity changes drastically _within_ the prediction horizon (t_f=10).
+    t = np.arange(cfg.t_sim)
+    v_test = 2.0 + 1.5 * np.sin(2.0 * np.pi * t / 20.0)
 
     # Run simulations
-    res_mpc = simulate_mpc(system=system, controller=mpc, x0=cfg.x0, r=r, t_sim=cfg.t_sim)
+    res_mpc = simulate_mpc(system=system, controller=mpc, x0=cfg.x0, r=r, t_sim=cfg.t_sim, v_seq=v_test)
     res_deepc_vanilla, diag_vanilla = simulate_deepc(
-        system=system, controller=deepc_vanilla, x0=cfg.x0, r=r, t_sim=cfg.t_sim, collect_diagnostics=True
+        system=system, controller=deepc_vanilla, x0=cfg.x0, r=r, t_sim=cfg.t_sim, collect_diagnostics=True, v_seq=v_test
     )
     res_deepc_lifted, diag_lifted = simulate_deepc(
-        system=system_lifted, controller=deepc_lifted, x0=cfg.x0, r=r, t_sim=cfg.t_sim, collect_diagnostics=True
+        system=system_lifted, controller=deepc_lifted, x0=cfg.x0, r=r, t_sim=cfg.t_sim, collect_diagnostics=True, v_seq=v_test
     )
     
     # NOTE: The lifted results u vector needs to be arctan'd if we want the actual steering angle metric
@@ -161,9 +169,9 @@ def main() -> None:
         print(f"- {name:25s}: {res.rmse:.6f}")
 
     # Generate debug documents for assessment
-    export_debug_logs(results, r)
+    export_debug_logs(results, r, v_test)
 
-    out_dir = generate_all_plots(results, r)
+    out_dir = generate_all_plots(results, r, v_test)
     print(f"Saved plots to: {out_dir}")
 
 
